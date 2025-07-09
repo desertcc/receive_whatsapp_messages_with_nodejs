@@ -14,6 +14,7 @@ app.get('/', (req, res) => {
   res.send('Whatsapp with Node.js and Webhooks')
 })
 
+
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode']
   const challenge = req.query['hub.challenge']
@@ -26,7 +27,11 @@ app.get('/webhook', (req, res) => {
   }
 })
 
+
+
 app.post('/webhook', async (req, res) => {
+console.log("📩 Incoming Webhook Payload:", JSON.stringify(req.body, null, 2));
+  
   const { entry } = req.body
 
   if (!entry || entry.length === 0) {
