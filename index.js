@@ -90,7 +90,7 @@ console.log("📩 Incoming Webhook Payload:", JSON.stringify(req.body, null, 2))
 
 async function sendMessage(to, body) {
   await axios({
-    url: 'https://graph.facebook.com/v21.0/phone_number_id/messages',
+    url: `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
     method: 'post',
     headers: {
       'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
@@ -109,7 +109,7 @@ async function sendMessage(to, body) {
 
 async function replyMessage(to, body, messageId) {
   await axios({
-    url: 'https://graph.facebook.com/v21.0/phone_number_id/messages',
+    url: `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
     method: 'post',
     headers: {
       'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
@@ -131,7 +131,7 @@ async function replyMessage(to, body, messageId) {
 
 async function sendList(to) {
   await axios({
-    url: 'https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages',
+    url: `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
     method: 'post',
     headers: {
       'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
@@ -189,7 +189,7 @@ async function sendList(to) {
 
 async function sendReplyButtons(to) {
   await axios({
-    url: 'https://graph.facebook.com/v21.0/phone_number_id/messages',
+    url: `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
     method: 'post',
     headers: {
       'Authorization': `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
