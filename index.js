@@ -78,30 +78,57 @@ app.post('/webhook', async (req, res) => {
   res.status(200).send('Webhook processed');
 });
 
+const SHOP = "testbestcustomer.myshopify.com";
+
 async function fetchTodaySales() {
   try {
-    const response = await axios.get(`${process.env.SHOPIFY_API_URL}?type=today_sales&shop=testbestcustomer.myshopify.com`, {
+    const url = `${process.env.SHOPIFY_API_URL}/api/whatsapp-shopify?type=today_sales&shop=${SHOP}`;
+    console.log('SHOPIFY_API_URL:', process.env.SHOPIFY_API_URL);
+    console.log('Full request URL:', url);
+    
+    const response = await axios.get(url, {
       headers: {
         Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
       }
     });
+    
+    console.log('Response status:', response.status);
     return response.data.message;
   } catch (error) {
-    console.error('Error fetching today\'s sales:', error.message);
+    if (error.response) {
+      console.error("❌ Shopify API Error", {
+        status: error.response.status,
+        data: error.response.data,
+        headers: error.response.headers
+      });
+    } else {
+      console.error("❌ Unexpected Error", error.message);
+    }
     return "Sorry, I couldn't retrieve today's sales data.";
   }
 }
 
 async function fetchTopCustomers() {
   try {
-    const response = await axios.get(`${process.env.SHOPIFY_API_URL}?type=top_customers&shop=testbestcustomer.myshopify.com`, {
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
+    const response = await axios.get(
+      `${process.env.SHOPIFY_API_URL}/api/whatsapp-shopify?type=top_customers&shop=${SHOP}`, 
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
+        }
       }
-    });
+    );
     return response.data.message;
   } catch (error) {
-    console.error('Error fetching top customers:', error.message);
+    if (error.response) {
+      console.error("❌ Shopify API Error (Top Customers)", {
+        status: error.response.status,
+        data: error.response.data,
+        headers: error.response.headers
+      });
+    } else {
+      console.error("❌ Unexpected Error (Top Customers)", error.message);
+    }
     return "Sorry, I couldn't retrieve customer info.";
   }
 }
