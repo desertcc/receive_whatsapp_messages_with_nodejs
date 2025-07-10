@@ -80,7 +80,7 @@ app.post('/webhook', async (req, res) => {
 
 async function fetchTodaySales() {
   try {
-    const response = await axios.get(`${process.env.SHOPIFY_API_URL}?type=today_sales`, {
+    const response = await axios.get(`${process.env.SHOPIFY_API_URL}?type=today_sales&shop=testbestcustomer.myshopify.com`, {
       headers: {
         Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
       }
@@ -94,7 +94,7 @@ async function fetchTodaySales() {
 
 async function fetchTopCustomers() {
   try {
-    const response = await axios.get(`${process.env.SHOPIFY_API_URL}?type=top_customers`, {
+    const response = await axios.get(`${process.env.SHOPIFY_API_URL}?type=top_customers&shop=testbestcustomer.myshopify.com`, {
       headers: {
         Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
       }
