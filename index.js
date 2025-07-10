@@ -47,13 +47,18 @@ app.post('/webhook', async (req, res) => {
 
   if (messages) {
     if (messages.type === 'text') {
-      const userMessage = messages.text.body;
-      try {
-        const aiReply = await askGroq(userMessage);
-        await replyMessage(messages.from, aiReply, messages.id);
-      } catch (err) {
-        console.error('❌ Error generating Groq reply:', err.message);
-        await replyMessage(messages.from, "Sorry, I'm having trouble right now.", messages.id);
+      const text = messages.text.body.toLowerCase();
+
+      if (text.includes("how much") && text.includes("sell")) {
+        const reply = await fetchTodaySales();
+        await replyMessage(messages.from, reply, messages.id);
+      } else if (text.includes("top customers")) {
+        const reply = await fetchTopCustomers();
+        await replyMessage(messages.from, reply, messages.id);
+      } else {
+        // fallback to Groq
+        const groqReply = await askGroq(text);
+        await replyMessage(messages.from, groqReply, messages.id);
       }
     }
 
@@ -72,6 +77,34 @@ app.post('/webhook', async (req, res) => {
 
   res.status(200).send('Webhook processed');
 });
+
+async function fetchTodaySales() {
+  try {
+    const response = await axios.get(`${process.env.SHOPIFY_API_URL}?type=today_sales`, {
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
+      }
+    });
+    return response.data.message;
+  } catch (error) {
+    console.error('Error fetching today\'s sales:', error.message);
+    return "Sorry, I couldn't retrieve today's sales data.";
+  }
+}
+
+async function fetchTopCustomers() {
+  try {
+    const response = await axios.get(`${process.env.SHOPIFY_API_URL}?type=top_customers`, {
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
+      }
+    });
+    return response.data.message;
+  } catch (error) {
+    console.error('Error fetching top customers:', error.message);
+    return "Sorry, I couldn't retrieve customer info.";
+  }
+}
 
 async function askGroq(userText) {
   const response = await axios.post(
