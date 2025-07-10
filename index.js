@@ -134,21 +134,36 @@ async function fetchTopCustomers() {
 }
 
 async function askGroq(userText) {
+  const summaryUrl = 'https://shopify-test-best-customers-app.onrender.com/daily-data.json';
+  let contextText = '';
+
+  try {
+    const response = await fetch(summaryUrl);
+    const json = await response.json();
+
+    // Format context summary
+    contextText = `Here is today's store summary:\n- Total orders: ${json.orderCount}\n- Total sales: $${json.salesTotal} ${json.currencyCode}\n- Top products: ${json.topProducts.map(p => `${p.title} (${p.count})`).join(', ')}`;
+  } catch (error) {
+    contextText = "Store summary data is currently unavailable.";
+  }
+
   const response = await axios.post(
     'https://api.groq.com/openai/v1/chat/completions',
     {
       model: 'llama3-8b-8192',
       messages: [
-        { role: 'system', content: 'You are a helpful assistant.' },
+        {
+          role: 'system',
+          content: `${contextText}\n\nAnswer questions about today's store performance based on this data.`,
+        },
         { role: 'user', content: userText }
       ]
     },
     {
       headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
         'Content-Type': 'application/json'
       }
-    }
   );
 
   return response.data.choices[0].message.content.trim();
