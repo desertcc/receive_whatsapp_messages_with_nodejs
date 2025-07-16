@@ -1,3 +1,5 @@
+console.log("🟢 WhatsApp server is starting...");
+
 const express = require('express');
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
@@ -8,9 +10,20 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 // Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+let supabase;
+try {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (supabaseUrl && supabaseKey) {
+    console.log("🔌 Initializing Supabase client...");
+    supabase = createClient(supabaseUrl, supabaseKey);
+    console.log("✅ Supabase client initialized");
+  } else {
+    console.warn("⚠️ Supabase URL or key missing, some features will be disabled");
+  }
+} catch (error) {
+  console.error("❌ Failed to initialize Supabase client:", error);
+}
 
 const app = express();
 app.use(express.json());
@@ -86,8 +99,15 @@ app.post('/webhook', async (req, res) => {
 
 async function fetchTodaySales() {
   try {
+    // Check if Supabase client is initialized
+    if (!supabase) {
+      console.warn("⚠️ Supabase client not initialized in fetchTodaySales()");
+      return "Sorry, I couldn't retrieve today's sales data at the moment.";
+    }
+    
     // Get today's date in ISO format (YYYY-MM-DD)
     const today = new Date().toISOString().split('T')[0];
+    console.log(`📅 Querying orders for date: ${today}`);
     
     // Query orders from Supabase where created_at is today
     const { data: orders, error } = await supabase
@@ -117,6 +137,14 @@ async function fetchTodaySales() {
 
 async function fetchTopCustomers() {
   try {
+    // Check if Supabase client is initialized
+    if (!supabase) {
+      console.warn("⚠️ Supabase client not initialized in fetchTopCustomers()");
+      return "Sorry, I couldn't retrieve customer info at the moment.";
+    }
+    
+    console.log("👤 Querying top customers");
+    
     // Query customers from Supabase, ordered by total_spent DESC
     const { data: customers, error } = await supabase
       .from('customers')
@@ -147,39 +175,47 @@ async function askGroq(userText) {
   let contextText = '';
 
   try {
-    // Get today's date in ISO format (YYYY-MM-DD)
-    const today = new Date().toISOString().split('T')[0];
-    
-    // Query orders from Supabase for today
-    const { data: orders, error: ordersError } = await supabase
-      .from('orders')
-      .select('id, total_price, currency')
-      .gte('created_at', `${today}T00:00:00`)
-      .lt('created_at', `${today}T23:59:59`);
-    
-    if (ordersError) throw ordersError;
-    
-    // Query top products from Supabase
-    const { data: products, error: productsError } = await supabase
-      .from('products')
-      .select('title, units_sold, price')
-      .order('units_sold', { ascending: false })
-      .limit(5);
-    
-    if (productsError) throw productsError;
-    
-    // Calculate totals
-    const orderCount = orders ? orders.length : 0;
-    const salesTotal = orders ? orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0).toFixed(2) : 0;
-    const currencyCode = orders && orders.length > 0 ? orders[0].currency : 'USD';
-    
-    // Format top products
-    const topProductsText = products && products.length > 0 ?
-      products.map(p => `${p.title} (${p.units_sold})`).join(', ') :
-      'No product data available';
-    
-    // Format context summary
-    contextText = `Here is today's store summary:\n- Total orders: ${orderCount}\n- Total sales: $${salesTotal} ${currencyCode}\n- Top products: ${topProductsText}`;
+    // Check if Supabase client is initialized
+    if (!supabase) {
+      console.warn("⚠️ Supabase client not initialized in askGroq()");
+      contextText = "Store summary data is currently unavailable.";
+    } else {
+      console.log("🤖 Preparing context for Groq query");
+      
+      // Get today's date in ISO format (YYYY-MM-DD)
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Query orders from Supabase for today
+      const { data: orders, error: ordersError } = await supabase
+        .from('orders')
+        .select('id, total_price, currency')
+        .gte('created_at', `${today}T00:00:00`)
+        .lt('created_at', `${today}T23:59:59`);
+      
+      if (ordersError) throw ordersError;
+      
+      // Query top products from Supabase
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('title, units_sold, price')
+        .order('units_sold', { ascending: false })
+        .limit(5);
+      
+      if (productsError) throw productsError;
+      
+      // Calculate totals
+      const orderCount = orders ? orders.length : 0;
+      const salesTotal = orders ? orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0).toFixed(2) : 0;
+      const currencyCode = orders && orders.length > 0 ? orders[0].currency : 'USD';
+      
+      // Format top products
+      const topProductsText = products && products.length > 0 ?
+        products.map(p => `${p.title} (${p.units_sold})`).join(', ') :
+        'No product data available';
+      
+      // Format context summary
+      contextText = `Here is today's store summary:\n- Total orders: ${orderCount}\n- Total sales: $${salesTotal} ${currencyCode}\n- Top products: ${topProductsText}`;
+    }
   } catch (error) {
     console.error("❌ Supabase Error (Store Summary)", error);
     contextText = "Store summary data is currently unavailable.";
@@ -245,6 +281,7 @@ async function replyMessage(to, body, messageId) {
 
 // Optional: Keep your sendList and sendReplyButtons functions if needed
 
-app.listen(3000, () => {
-  console.log('✅ Server started on port 3000');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ WhatsApp server running on port ${PORT}`);
 });
