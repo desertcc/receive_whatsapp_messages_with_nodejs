@@ -75,9 +75,10 @@ app.post('/webhook', async (req, res) => {
         const reply = await fetchTopCustomers();
         await replyMessage(messages.from, reply, messages.id);
       } else {
-        // fallback to Groq
-        const groqReply = await askGroq(text);
-        await replyMessage(messages.from, groqReply, messages.id);
+        // fallback to Groq with refinement
+        const rawAnswer = await askGroq(text);
+        const refinedReply = await refineGroq(rawAnswer, text);
+        await replyMessage(messages.from, refinedReply, messages.id);
       }
     }
 
@@ -282,6 +283,34 @@ Answer the user's question based on the schema and data. If additional data is n
     }
   );
 
+  return response.data.choices[0].message.content.trim();
+}
+
+async function refineGroq(rawAnswer, question) {
+  // Rewrite raw Groq output into a concise, natural response
+  const prompt = `You are a helpful assistant that rewrites raw answers into a natural, concise response.
+
+Original question: ${question}
+
+Raw answer:
+${rawAnswer}
+`;
+
+  const response = await axios.post(
+    'https://api.groq.com/openai/v1/chat/completions',
+    {
+      model: process.env.GROQ_MODEL || 'llama3-8b-8192',
+      messages: [
+        { role: 'system', content: prompt }
+      ]
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
   return response.data.choices[0].message.content.trim();
 }
 
