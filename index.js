@@ -112,7 +112,7 @@ async function fetchTodaySales() {
     // Query orders from Supabase where created_at is today
     const { data: orders, error } = await supabase
       .from('orders')
-      .select('id, total_price, currency')
+      .select('id, total_price')
       .gte('created_at', `${today}T00:00:00`)
       .lt('created_at', `${today}T23:59:59`);
     
@@ -125,10 +125,9 @@ async function fetchTodaySales() {
     // Calculate total orders and sales
     const orderCount = orders.length;
     const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0);
-    const currency = orders[0].currency || 'USD';
     
-    // Format the response
-    return `We had ${orderCount} order${orderCount !== 1 ? 's' : ''} totaling $${totalSales.toFixed(2)} ${currency} today.`;
+    // Format the response - use USD as default currency since it's not in the database
+    return `We had ${orderCount} order${orderCount !== 1 ? 's' : ''} totaling $${totalSales.toFixed(2)} USD today.`;
   } catch (error) {
     console.error("❌ Supabase Error (Today's Sales)", error);
     return "Sorry, I couldn't retrieve today's sales data at the moment.";
@@ -148,7 +147,7 @@ async function fetchTopCustomers() {
     // Query customers from Supabase, ordered by total_spent DESC
     const { data: customers, error } = await supabase
       .from('customers')
-      .select('first_name, last_name, total_spent, currency')
+      .select('first_name, last_name, total_spent')
       .order('total_spent', { ascending: false })
       .limit(5);
     
@@ -158,8 +157,7 @@ async function fetchTopCustomers() {
       return "We don't have any customer data available at the moment.";
     }
     
-    // Format the response
-    const currency = customers[0].currency || 'USD';
+    // Format the response (using USD as default currency)
     const topCustomersText = customers
       .map(customer => `${customer.first_name} ${customer.last_name} ($${parseFloat(customer.total_spent).toFixed(0)})`)
       .join(', ');
@@ -188,7 +186,7 @@ async function askGroq(userText) {
       // Query orders from Supabase for today
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, total_price, currency')
+        .select('id, total_price')
         .gte('created_at', `${today}T00:00:00`)
         .lt('created_at', `${today}T23:59:59`);
       
@@ -206,15 +204,26 @@ async function askGroq(userText) {
       // Calculate totals
       const orderCount = orders ? orders.length : 0;
       const salesTotal = orders ? orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0).toFixed(2) : 0;
-      const currencyCode = orders && orders.length > 0 ? orders[0].currency : 'USD';
+      const currencyCode = 'USD'; // Default currency
       
       // Format top products
       const topProductsText = products && products.length > 0 ?
         products.map(p => `${p.title} (${p.units_sold})`).join(', ') :
         'No product data available';
       
-      // Format context summary
-      contextText = `Here is today's store summary:\n- Total orders: ${orderCount}\n- Total sales: $${salesTotal} ${currencyCode}\n- Top products: ${topProductsText}`;
+      // Format context summary with database schema information
+      contextText = `
+# Database Schema Information
+The store data is stored in Supabase with the following structure:
+- orders: Contains order information with id, total_price, created_at
+- products: Contains product information with title, units_sold, price
+- customers: Contains customer information with first_name, last_name, total_spent
+
+# Today's Store Summary (${today})
+- Total orders: ${orderCount}
+- Total sales: $${salesTotal} ${currencyCode}
+- Top products: ${topProductsText}
+      `;
     }
   } catch (error) {
     console.error("❌ Supabase Error (Store Summary)", error);
