@@ -172,6 +172,14 @@ async function fetchTopCustomers() {
 async function askGroq(userText) {
   let contextText = '';
 
+  // Static database schema description for Groq
+  const schemaDescription = `
+# Database Schema
+orders: id (int), total_price (float), created_at (timestamp), customer_id (int), product_id (int)
+products: id (int), title (string), price (float)
+customers: id (int), first_name (string), last_name (string), total_spent (float)
+`;
+
   try {
     // Check if Supabase client is initialized
     if (!supabase) {
@@ -183,62 +191,86 @@ async function askGroq(userText) {
       // Get today's date in ISO format (YYYY-MM-DD)
       const today = new Date().toISOString().split('T')[0];
       
-      // Query orders from Supabase for today
+      // Get all available tables and their raw data to provide to Groq
+      // This approach is more resilient to schema changes
+      
+      // Query orders from Supabase for today with all columns
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, total_price')
+        .select('*')
         .gte('created_at', `${today}T00:00:00`)
         .lt('created_at', `${today}T23:59:59`);
       
       if (ordersError) throw ordersError;
       
-      // Query top products from Supabase
+      // Query products - get all columns
       const { data: products, error: productsError } = await supabase
         .from('products')
-        .select('title, units_sold, price')
-        .order('units_sold', { ascending: false })
-        .limit(5);
+        .select('*')
+        .limit(10);
       
       if (productsError) throw productsError;
       
-      // Calculate totals
+      // Query customers - get all columns
+      const { data: customers, error: customersError } = await supabase
+        .from('customers')
+        .select('*')
+        .limit(10);
+      
+      if (customersError) throw customersError;
+      
+      // Calculate basic stats regardless of schema
       const orderCount = orders ? orders.length : 0;
-      const salesTotal = orders ? orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0).toFixed(2) : 0;
+      const salesTotal = orders ? orders.reduce((sum, order) => {
+        const price = order.total_price || order.price || 0;
+        return sum + parseFloat(price);
+      }, 0).toFixed(2) : 0;
       const currencyCode = 'USD'; // Default currency
       
-      // Format top products
-      const topProductsText = products && products.length > 0 ?
-        products.map(p => `${p.title} (${p.units_sold})`).join(', ') :
-        'No product data available';
-      
-      // Format context summary with database schema information
+      // Format context summary with raw data for Groq to analyze
       contextText = `
-# Database Schema Information
-The store data is stored in Supabase with the following structure:
-- orders: Contains order information with id, total_price, created_at
-- products: Contains product information with title, units_sold, price
-- customers: Contains customer information with first_name, last_name, total_spent
-
 # Today's Store Summary (${today})
 - Total orders: ${orderCount}
 - Total sales: $${salesTotal} ${currencyCode}
-- Top products: ${topProductsText}
+
+# Raw Data from Database
+## Orders (last 24 hours)
+${JSON.stringify(orders, null, 2)}
+
+## Products (top 10)
+${JSON.stringify(products, null, 2)}
+
+## Customers (top 10)
+${JSON.stringify(customers, null, 2)}
       `;
+      
+      // Log that we're providing raw data to Groq
+      console.log('📊 Providing raw Supabase data to Groq for analysis');
     }
   } catch (error) {
     console.error("❌ Supabase Error (Store Summary)", error);
     contextText = "Store summary data is currently unavailable.";
   }
 
+    // Build dynamic prompt combining schema and data for Groq analysis
+  const prompt = `
+You are an AI assistant that uses the given Supabase database schema to interpret and analyze data.
+
+Schema:
+${schemaDescription}
+
+Data:
+${contextText}
+
+Answer the user's question based on the schema and data. If additional data is needed, provide the appropriate Supabase query.
+`;
+
   const response = await axios.post(
     'https://api.groq.com/openai/v1/chat/completions',
     {
-      model: 'llama3-8b-8192',
+      model: process.env.GROQ_MODEL || 'llama3-8b-8192',
       messages: [
-        {
-          role: 'system',
-          content: `${contextText}\n\nAnswer questions about today's store performance based on this data.`,
-        },
+        { role: 'system', content: prompt },
         { role: 'user', content: userText }
       ]
     },
