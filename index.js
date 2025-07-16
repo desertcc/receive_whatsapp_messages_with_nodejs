@@ -8,6 +8,8 @@ const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const WEBHOOK_VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+// Set default Groq model here for easy switching (overrides .env)
+const GROQ_MODEL = 'moonshotai/kimi-k2-instruct';
 
 // Initialize Supabase client
 let supabase;
@@ -269,7 +271,7 @@ Answer the user's question based on the schema and data. If additional data is n
   const response = await axios.post(
     'https://api.groq.com/openai/v1/chat/completions',
     {
-      model: process.env.GROQ_MODEL || 'llama3-8b-8192',
+      model: GROQ_MODEL,
       messages: [
         { role: 'system', content: prompt },
         { role: 'user', content: userText }
@@ -299,7 +301,7 @@ ${rawAnswer}
   const response = await axios.post(
     'https://api.groq.com/openai/v1/chat/completions',
     {
-      model: process.env.GROQ_MODEL || 'llama3-8b-8192',
+      model: GROQ_MODEL,
       messages: [
         { role: 'system', content: prompt }
       ]
@@ -346,12 +348,3 @@ async function replyMessage(to, body, messageId) {
       text: { body },
       context: { message_id: messageId }
     }
-  });
-}
-
-// Optional: Keep your sendList and sendReplyButtons functions if needed
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ WhatsApp server running on port ${PORT}`);
-});
