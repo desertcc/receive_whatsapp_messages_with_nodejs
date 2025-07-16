@@ -1,10 +1,16 @@
 const express = require('express');
 const axios = require('axios');
+const { createClient } = require('@supabase/supabase-js');
 
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const WEBHOOK_VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const app = express();
 app.use(express.json());
@@ -78,72 +84,104 @@ app.post('/webhook', async (req, res) => {
   res.status(200).send('Webhook processed');
 });
 
-const SHOP = "testbestcustomer.myshopify.com";
-
 async function fetchTodaySales() {
   try {
-    const url = `${process.env.SHOPIFY_API_URL}/api/whatsapp-shopify?type=today_sales&shop=${SHOP}`;
-    console.log('SHOPIFY_API_URL:', process.env.SHOPIFY_API_URL);
-    console.log('Full request URL:', url);
+    // Get today's date in ISO format (YYYY-MM-DD)
+    const today = new Date().toISOString().split('T')[0];
     
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
-      }
-    });
+    // Query orders from Supabase where created_at is today
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('id, total_price, currency')
+      .gte('created_at', `${today}T00:00:00`)
+      .lt('created_at', `${today}T23:59:59`);
     
-    console.log('Response status:', response.status);
-    return response.data.message;
-  } catch (error) {
-    if (error.response) {
-      console.error("❌ Shopify API Error", {
-        status: error.response.status,
-        data: error.response.data,
-        headers: error.response.headers
-      });
-    } else {
-      console.error("❌ Unexpected Error", error.message);
+    if (error) throw error;
+    
+    if (!orders || orders.length === 0) {
+      return "We haven't had any orders today yet.";
     }
-    return "Sorry, I couldn't retrieve today's sales data.";
+    
+    // Calculate total orders and sales
+    const orderCount = orders.length;
+    const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0);
+    const currency = orders[0].currency || 'USD';
+    
+    // Format the response
+    return `We had ${orderCount} order${orderCount !== 1 ? 's' : ''} totaling $${totalSales.toFixed(2)} ${currency} today.`;
+  } catch (error) {
+    console.error("❌ Supabase Error (Today's Sales)", error);
+    return "Sorry, I couldn't retrieve today's sales data at the moment.";
   }
 }
 
 async function fetchTopCustomers() {
   try {
-    const response = await axios.get(
-      `${process.env.SHOPIFY_API_URL}/api/whatsapp-shopify?type=top_customers&shop=${SHOP}`, 
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_API_KEY}`
-        }
-      }
-    );
-    return response.data.message;
-  } catch (error) {
-    if (error.response) {
-      console.error("❌ Shopify API Error (Top Customers)", {
-        status: error.response.status,
-        data: error.response.data,
-        headers: error.response.headers
-      });
-    } else {
-      console.error("❌ Unexpected Error (Top Customers)", error.message);
+    // Query customers from Supabase, ordered by total_spent DESC
+    const { data: customers, error } = await supabase
+      .from('customers')
+      .select('first_name, last_name, total_spent, currency')
+      .order('total_spent', { ascending: false })
+      .limit(5);
+    
+    if (error) throw error;
+    
+    if (!customers || customers.length === 0) {
+      return "We don't have any customer data available at the moment.";
     }
-    return "Sorry, I couldn't retrieve customer info.";
+    
+    // Format the response
+    const currency = customers[0].currency || 'USD';
+    const topCustomersText = customers
+      .map(customer => `${customer.first_name} ${customer.last_name} ($${parseFloat(customer.total_spent).toFixed(0)})`)
+      .join(', ');
+    
+    return `Our top customers are ${topCustomersText}.`;
+  } catch (error) {
+    console.error("❌ Supabase Error (Top Customers)", error);
+    return "Sorry, I couldn't retrieve customer info at the moment.";
   }
 }
 
 async function askGroq(userText) {
-  const summaryUrl = 'https://shopify-test-best-customers-app.onrender.com/daily-data.json';
   let contextText = '';
 
   try {
-    const response = await fetch(summaryUrl);
-    const json = await response.json();
-
+    // Get today's date in ISO format (YYYY-MM-DD)
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Query orders from Supabase for today
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id, total_price, currency')
+      .gte('created_at', `${today}T00:00:00`)
+      .lt('created_at', `${today}T23:59:59`);
+    
+    if (ordersError) throw ordersError;
+    
+    // Query top products from Supabase
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('title, units_sold, price')
+      .order('units_sold', { ascending: false })
+      .limit(5);
+    
+    if (productsError) throw productsError;
+    
+    // Calculate totals
+    const orderCount = orders ? orders.length : 0;
+    const salesTotal = orders ? orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0).toFixed(2) : 0;
+    const currencyCode = orders && orders.length > 0 ? orders[0].currency : 'USD';
+    
+    // Format top products
+    const topProductsText = products && products.length > 0 ?
+      products.map(p => `${p.title} (${p.units_sold})`).join(', ') :
+      'No product data available';
+    
     // Format context summary
-    contextText = `Here is today's store summary:\n- Total orders: ${json.orderCount}\n- Total sales: $${json.salesTotal} ${json.currencyCode}\n- Top products: ${json.topProducts.map(p => `${p.title} (${p.count})`).join(', ')}`;
+    contextText = `Here is today's store summary:\n- Total orders: ${orderCount}\n- Total sales: $${salesTotal} ${currencyCode}\n- Top products: ${topProductsText}`;
   } catch (error) {
+    console.error("❌ Supabase Error (Store Summary)", error);
     contextText = "Store summary data is currently unavailable.";
   }
 
